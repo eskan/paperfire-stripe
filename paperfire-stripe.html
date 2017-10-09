@@ -61,8 +61,7 @@
           errorMessage: String,
           // URL to location in firebase you want the response from stripe to be pushed
           firebaseUrl: {
-            type: String,
-            readOnly: true
+            type: String
           },
           // Image Url: A relative or absolute URL pointing to a square image of your brand or product. The recommended minimum size is 128x128px. The supported image types are: .gif, .jpeg, and .png.
           image: {
@@ -118,7 +117,7 @@
         window.removeEventListener('paperfire-stripe-checkout');
       }
 
-      open(passedConfig) {
+      open() {
         if (!this.pubKey) {
           console.error('Error: No stripe publishable key found');
           return;
@@ -128,20 +127,24 @@
         }
 
         let config = {
+          allowRememberMe: this.allowRememberMe,
           amount: this.amount,
-          billingAddress: this.billingAddress,
+          billingAddress: this.billingAddress || this.shippingAddress,
+          bitcoin: this.bitcoin,
+          currency: this.currency,
           description: this.description,
+          email: this.email,
           image: this.image,
-          key: this.pubKey,
           locale: this.locale,
           name: this.name,
-          zipCode: this.zipCode,
+          shippingAddress: this.shippingAddress,
+          zipCode: this.zipCode
         };
         if (this.email) {
           config['email'] = this.email;
         }
 
-        this._checkout.open(Object.assign({}, config, passedConfig));
+        this._checkout.open(config);
       }
 
       _createRef(url) {
@@ -153,38 +156,10 @@
       }
 
       _initCheckout(pubKey) {
-        const vm = this;
-        if (this.debug) {
-          console.info('init: <paperfire-stripe>', {
-            allowRememberMe: this.allowRememberMe,
-            amount: this.amount,
-            billingAddress: this.billingAddress,
-            bitcoin: this.bitcoin,
-            currency: this.currency,
-            description: this.description,
-            email: this.email,
-            firebaseUrl: this.firebaseUrl,
-            image: this.image,
-            locale: this.locale,
-            name: this.name,
-            pubKey: pubKey,
-            shippingAddress: this.shippingAddress,
-            zipCode: this.zipCode
-          });
-        }
         return StripeCheckout.configure({
-          allowRememberMe: this.allowRememberMe,
-          currency: this.currency,
-          billingAddress: this.billingAddress || this.shippingAddress,
-          bitcoin: this.bitcoin,
           key: pubKey,
-          image: this.image,
-          currency: this.currency,
-          shippingAddress: this.shippingAddress,
-          locale: this.locale,
-          zipCode: this.zipCode,
           token: (token) => {
-            if (vm.debug) {
+            if (this.debug) {
               console.log('PAPERFIRE_STRIPE:token', token);
             }
             /**
@@ -193,14 +168,20 @@
              * @event paperfire-stripe-token
              * @param {object} token The stripe response. Access the transaction token with token.id.
              */
-            vm.dispatchEvent(new CustomEvent('paperfire-stripe-token', {
+            this.dispatchEvent(new CustomEvent('paperfire-stripe-token', {
               detail: token,
               bubbles: true,
               composed: true
             }));
-            if (vm._ref) {
-              vm._ref.push(token).then(() => {
-                if (vm.debug) {
+            if (this._ref) {
+              this._ref.push({
+                token: token.id,
+                email: this.email,
+                currency: this.currency,
+                description: this.description,
+                amount: this.amount
+              }).then(() => {
+                if (this.debug) {
                   console.log('PAPERFIRE_STRIPE:push success');
                 }
                 /**
@@ -208,7 +189,7 @@
                  *
                  * @event paperfire-stripe-pushed
                  */
-                vm.dispatchEvent(new CustomEvent('paperfire-stripe-pushed', {
+                this.dispatchEvent(new CustomEvent('paperfire-stripe-pushed', {
                   detail: token,
                   bubbles: true,
                   composed: true
