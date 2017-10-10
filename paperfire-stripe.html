@@ -43,6 +43,8 @@
             type: String,
             value: 'USD'
           },
+          // Data add to push payload
+          data: Object,
           // Debug the element with console logs
           debug: Boolean,
           // A description of the product or service being purchased
@@ -61,6 +63,10 @@
           errorMessage: String,
           // URL to location in firebase you want the response from stripe to be pushed
           firebaseUrl: {
+            type: String
+          },
+          // URL to location in firebase you want the response from stripe to be pushed
+          firestoreUrl: {
             type: String
           },
           // Image Url: A relative or absolute URL pointing to a square image of your brand or product. The recommended minimum size is 128x128px. The supported image types are: .gif, .jpeg, and .png.
@@ -97,11 +103,6 @@
           _checkout: {
             type: Object,
             computed: '_initCheckout(pubKey)'
-          },
-          // Firebase ref
-          _ref: {
-            type: Object,
-            computed: '_createRef(firebaseUrl)'
           }
         };
       }
@@ -109,7 +110,6 @@
       ready() {
         super.ready();
         this.addEventListener('popstate', () => this._checkout.close());
-        window.addEventListener('paperfire-stripe-checkout', (e) => this.open(e.detail));
       }
 
       disconnectedCallback() {
@@ -147,14 +147,6 @@
         this._checkout.open(config);
       }
 
-      _createRef(url) {
-        if (url && firebase) {
-          return firebase.database().ref(url);
-        } else {
-          console.error('PAPERFIRE_STRIPE: cannot access firebase');
-        }
-      }
-
       _initCheckout(pubKey) {
         return StripeCheckout.configure({
           key: pubKey,
@@ -173,14 +165,17 @@
               bubbles: true,
               composed: true
             }));
-            if (this._ref) {
-              this._ref.push({
-                token: token.id,
-                email: this.email,
-                currency: this.currency,
-                description: this.description,
-                amount: this.amount
-              }).then(() => {
+            var payload = {
+              token: token.id,
+              email: this.email,
+              currency: this.currency,
+              description: this.description,
+              amount: this.amount,
+            };
+            if (this.data)
+              payload.data = this.data;
+            if (firebase && firebase.database && this.firebaseUrl) {
+              firebase.database().ref(this.firebaseUrl).push(payload).then(() => {
                 if (this.debug) {
                   console.log('PAPERFIRE_STRIPE:push success');
                 }
@@ -196,6 +191,25 @@
                 }));
               }).catch(err => {
                 console.error('PAPERFIRE_STRIPE:firebase push error', err);
+              });
+            }
+            if (firebase && firebase.firestore && this.firestoreUrl) {
+              firebase.firestore().collection(this.firestoreUrl).add(payload).then(() => {
+                if (this.debug) {
+                  console.log('PAPERFIRE_STRIPE:push success');
+                }
+                /**
+                 * Fired when `paperfire-stripe` pushes the stripe response to firebase.
+                 *
+                 * @event paperfire-stripe-pushed
+                 */
+                this.dispatchEvent(new CustomEvent('paperfire-stripe-pushed', {
+                  detail: token,
+                  bubbles: true,
+                  composed: true
+                }));
+              }).catch(err => {
+                console.error('PAPERFIRE_STRIPE:firestore add error', err);
               });
             }
           }
